@@ -1,0 +1,82 @@
+name: Beta Builder
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-beta:
+    name: Build beta app
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Clone Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up gradle
+        uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
+
+      - name: Build beta APK
+        run: ./gradlew assemblePreview
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@f30bdd30588842ac76044ecdbd4b6d0e3e813478
+        with:
+          releaseDirectory: app/build/outputs/apk/preview
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: '35.0.1'
+
+      - name: Get version info
+        id: version_info
+        run: |
+          set -e
+          commit_count=$(git rev-list --count HEAD)
+          current_sha=$(git rev-parse --short HEAD)
+          echo "COMMIT_COUNT=$commit_count" >> $GITHUB_OUTPUT
+          echo "CURRENT_SHA=$current_sha" >> $GITHUB_OUTPUT
+
+      - name: Rename APKs
+        run: |
+          set -e
+          cd app/build/outputs/apk/preview
+          mv app-arm64-v8a-preview-signed.apk Komikku-beta-arm64-v8a.apk
+          mv app-armeabi-v7a-preview-signed.apk Komikku-beta-armeabi-v7a.apk
+          mv app-x86-preview-signed.apk Komikku-beta-x86.apk
+          mv app-x86_64-preview-signed.apk Komikku-beta-x86_64.apk
+          mv app-universal-preview-signed.apk Komikku-beta-universal.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: beta-${{ steps.version_info.outputs.CURRENT_SHA }}
+          name: Komikku Beta - ${{ steps.version_info.outputs.CURRENT_SHA }}
+          body: |
+            Beta build from commit ${{ github.sha }}
+            Commit count: ${{ steps.version_info.outputs.COMMIT_COUNT }}
+          prerelease: true
+          files: |
+            app/build/outputs/apk/preview/Komikku-beta-arm64-v8a.apk
+            app/build/outputs/apk/preview/Komikku-beta-armeabi-v7a.apk
+            app/build/outputs/apk/preview/Komikku-beta-x86.apk
+            app/build/outputs/apk/preview/Komikku-beta-x86_64.apk
+            app/build/outputs/apk/preview/Komikku-beta-universal.apk
