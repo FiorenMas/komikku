@@ -68,25 +68,25 @@ internal object ExtensionLoader {
 
     private const val PRIVATE_EXTENSION_EXTENSION = "ext"
 
-    private const val JAR_EXTENSION_EXTENSION = "jar"
-    private const val JAR_EXTENSIONS_DIR = "extensions_jar"
+    private const val APK_EXTENSION_EXTENSION = "apk"
+    private const val APK_EXTENSIONS_DIR = "extensions_apk"
 
     private fun getPrivateExtensionDir(context: Context) = File(context.filesDir, "exts")
 
-    private fun getJarExtensionBaseDir(context: Context) = File(context.filesDir, JAR_EXTENSIONS_DIR)
+    private fun getApkExtensionBaseDir(context: Context) = File(context.filesDir, APK_EXTENSIONS_DIR)
 
-    private fun getJarRepoDir(context: Context, repoBaseUrl: String): File {
+    private fun getApkRepoDir(context: Context, repoBaseUrl: String): File {
         val hash = Hash.sha256(repoBaseUrl.toByteArray()).take(16)
-        return File(getJarExtensionBaseDir(context), hash)
+        return File(getApkExtensionBaseDir(context), hash)
     }
 
-    private fun findJarExtensionFile(context: Context, pkgName: String): File? {
-        val baseDir = getJarExtensionBaseDir(context)
+    private fun findApkExtensionFile(context: Context, pkgName: String): File? {
+        val baseDir = getApkExtensionBaseDir(context)
         if (!baseDir.isDirectory) return null
         return baseDir.listFiles()?.asSequence()
             ?.filter { it.isDirectory }
             ?.mapNotNull { repoDir ->
-                File(repoDir, "$pkgName.$JAR_EXTENSION_EXTENSION").takeIf { it.isFile }
+                File(repoDir, "$pkgName.$APK_EXTENSION_EXTENSION").takeIf { it.isFile }
             }
             ?.firstOrNull()
     }
@@ -137,7 +137,7 @@ internal object ExtensionLoader {
         File(getPrivateExtensionDir(context), "$pkgName.$PRIVATE_EXTENSION_EXTENSION").delete()
     }
 
-    fun installJarExtension(context: Context, file: File, repoBaseUrl: String): Boolean {
+    fun installApkExtension(context: Context, file: File, repoBaseUrl: String): Boolean {
         val extension = context.packageManager.getPackageArchiveInfo(file.absolutePath, PACKAGE_FLAGS)
             ?.takeIf { isPackageAnExtension(it) } ?: return false
         val currentExtension = getExtensionPackageInfoFromPkgName(context, extension.packageName)
@@ -162,10 +162,10 @@ internal object ExtensionLoader {
             }
         }
 
-        val repoDir = getJarRepoDir(context, repoBaseUrl)
+        val repoDir = getApkRepoDir(context, repoBaseUrl)
         repoDir.mkdirs()
 
-        val target = File(repoDir, "${extension.packageName}.$JAR_EXTENSION_EXTENSION")
+        val target = File(repoDir, "${extension.packageName}.$APK_EXTENSION_EXTENSION")
         return try {
             target.delete()
             file.copyAndSetReadOnlyTo(target, overwrite = true)
@@ -176,14 +176,14 @@ internal object ExtensionLoader {
             }
             true
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to copy jar extension file." }
+            logcat(LogPriority.ERROR, e) { "Failed to copy apk extension file." }
             target.delete()
             false
         }
     }
 
-    fun uninstallJarExtension(context: Context, pkgName: String) {
-        findJarExtensionFile(context, pkgName)?.delete()
+    fun uninstallApkExtension(context: Context, pkgName: String) {
+        findApkExtensionFile(context, pkgName)?.delete()
     }
 
     /**
@@ -223,21 +223,21 @@ internal object ExtensionLoader {
             ?.map { ExtensionInfo(packageInfo = it, isShared = false) }
             ?: emptySequence()
 
-        val jarExtPkgs = getJarExtensionBaseDir(context)
+        val apkExtPkgs = getApkExtensionBaseDir(context)
             .let { baseDir ->
                 if (baseDir.isDirectory) {
                     baseDir.listFiles()?.asSequence()
                         ?.filter { it.isDirectory }
                         ?.flatMap { repoDir ->
                             repoDir.listFiles()?.asSequence()
-                                ?.filter { it.isFile && it.extension == JAR_EXTENSION_EXTENSION }
+                                ?.filter { it.isFile && it.extension == APK_EXTENSION_EXTENSION }
                                 ?: emptySequence()
                         }
-                        ?.mapNotNull { jarFile ->
-                            if (jarFile.canWrite()) {
-                                jarFile.setReadOnly()
+                        ?.mapNotNull { apkFile ->
+                            if (apkFile.canWrite()) {
+                                apkFile.setReadOnly()
                             }
-                            val path = jarFile.absolutePath
+                            val path = apkFile.absolutePath
                             pkgManager.getPackageArchiveInfo(path, PACKAGE_FLAGS)
                                 ?.apply { applicationInfo!!.fixBasePaths(path) }
                         }
@@ -249,10 +249,10 @@ internal object ExtensionLoader {
                 }
             }
 
-        val allLocalExtPkgs = (privateExtPkgs + jarExtPkgs).toList()
+        val allLocalExtPkgs = (privateExtPkgs + apkExtPkgs).toList()
 
         val extPkgs = (sharedExtPkgs + allLocalExtPkgs.asSequence())
-            // Remove duplicates. Shared takes priority than private/jar by default
+            // Remove duplicates. Shared takes priority than private/apk by default
             .distinctBy { it.packageInfo.packageName }
             // Compare version number
             .mapNotNull { pkg ->
@@ -317,12 +317,12 @@ internal object ExtensionLoader {
             null
         }
 
-        val jarExtensionFile = findJarExtensionFile(context, pkgName)
-        val jarPkg = if (jarExtensionFile != null) {
-            context.packageManager.getPackageArchiveInfo(jarExtensionFile.absolutePath, PACKAGE_FLAGS)
+        val apkExtensionFile = findApkExtensionFile(context, pkgName)
+        val apkPkg = if (apkExtensionFile != null) {
+            context.packageManager.getPackageArchiveInfo(apkExtensionFile.absolutePath, PACKAGE_FLAGS)
                 ?.takeIf { isPackageAnExtension(it) }
                 ?.let {
-                    it.applicationInfo!!.fixBasePaths(jarExtensionFile.absolutePath)
+                    it.applicationInfo!!.fixBasePaths(apkExtensionFile.absolutePath)
                     ExtensionInfo(
                         packageInfo = it,
                         isShared = false,
@@ -345,7 +345,7 @@ internal object ExtensionLoader {
             null
         }
 
-        val bestLocal = selectExtensionPackage(jarPkg, privatePkg)
+        val bestLocal = selectExtensionPackage(apkPkg, privatePkg)
         return selectExtensionPackage(sharedPkg, bestLocal)
     }
 

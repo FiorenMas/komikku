@@ -59,7 +59,7 @@ internal class ExtensionInstaller(private val context: Context) {
     private val downloadsStateFlows = hashMapOf<Long, MutableStateFlow<InstallStep>>()
 
     /**
-     * Maps download IDs to their source repo URLs for jar-based installation.
+     * Maps download IDs to their source repo URLs for apk-based installation.
      */
     private val downloadRepoUrls = hashMapOf<Long, String>()
 
@@ -94,7 +94,7 @@ internal class ExtensionInstaller(private val context: Context) {
         val id = downloadManager.enqueue(request)
         activeDownloads[pkgName] = id
 
-        // Track repo URL for jar-based installation (no system install)
+        // Track repo URL for apk-based installation (no system install)
         if (extension is Extension.Available) {
             downloadRepoUrls[id] = extension.repoUrl
         }
@@ -157,7 +157,7 @@ internal class ExtensionInstaller(private val context: Context) {
         .distinctUntilChanged()
 
     /**
-     * Installs the extension at the given uri directly as a jar file in the app's
+     * Installs the extension at the given uri directly as an apk file in the app's
      * data directory, without triggering system package installation.
      *
      * @param uri The uri of the extension to install.
@@ -180,8 +180,8 @@ internal class ExtensionInstaller(private val context: Context) {
             }
 
             val success = if (repoUrl != null) {
-                // Repo-sourced extension: install as jar (organized by repo)
-                ExtensionLoader.installJarExtension(context, tempFile, repoUrl)
+                // Repo-sourced extension: install as apk (organized by repo)
+                ExtensionLoader.installApkExtension(context, tempFile, repoUrl)
             } else {
                 // Fallback for non-repo downloads: use private extension install
                 ExtensionLoader.installPrivateExtensionFile(context, tempFile)
@@ -222,7 +222,7 @@ internal class ExtensionInstaller(private val context: Context) {
                 .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         } else {
-            ExtensionLoader.uninstallJarExtension(context, pkgName)
+            ExtensionLoader.uninstallApkExtension(context, pkgName)
             ExtensionLoader.uninstallPrivateExtension(context, pkgName)
             ExtensionInstallReceiver.notifyRemoved(context, pkgName)
         }
